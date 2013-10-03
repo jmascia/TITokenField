@@ -24,6 +24,7 @@
 - (void)setSearchResultsVisible:(BOOL)visible;
 - (void)resultsForSearchString:(NSString *)searchString;
 - (void)presentpopoverAtTokenFieldCaretAnimated:(BOOL)animated;
+- (UIControl <TIToken> *)tokenForRepresentedObject:(id)object;
 @end
 
 @implementation TITokenFieldView {
@@ -224,7 +225,8 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	
 	id representedObject = [_resultsArray objectAtIndex:indexPath.row];
-    TIToken * token = [[TIToken alloc] initWithTitle:[self displayStringForRepresentedObject:representedObject] representedObject:representedObject];
+    // JM: abstracted token creation
+    UIControl <TIToken> * token = [self tokenForRepresentedObject:representedObject];
     [_tokenField addToken:token];
 	
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
@@ -336,7 +338,7 @@
 				__block BOOL shouldAdd = ![_resultsArray containsObject:sourceObject];
 				if (shouldAdd && !_showAlreadyTokenized){
 					
-					[_tokenField.tokens enumerateObjectsUsingBlock:^(TIToken * token, NSUInteger idx, BOOL *secondStop){
+          [_tokenField.tokens enumerateObjectsUsingBlock:^(UIControl<TIToken>* token, NSUInteger idx, BOOL *secondStop){
 						if ([token.representedObject isEqual:sourceObject]){
 							shouldAdd = NO;
 							*secondStop = YES;
@@ -363,6 +365,16 @@
 	
 	[_popoverController presentPopoverFromRect:[_tokenField caretRectForPosition:position] inView:_tokenField
 					 permittedArrowDirections:UIPopoverArrowDirectionUp animated:animated];
+}
+
+// JM: Added method for creation a token with given object, queries delegate before defaulting to normal method.
+- (UIControl <TIToken> *)tokenForRepresentedObject:(id)object {
+  
+  if ([_tokenField.delegate respondsToSelector:@selector(tokenField:tokenForRepresentedObject:)]){
+    return [_tokenField.delegate tokenField:_tokenField tokenForRepresentedObject:object];
+  }
+  
+  return [[TIToken alloc] initWithTitle:[self displayStringForRepresentedObject:object] representedObject:object];
 }
 
 #pragma mark Other
@@ -413,6 +425,11 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 @synthesize selectedToken = _selectedToken;
 @synthesize tokenizingCharacters = _tokenizingCharacters;
 @synthesize forcePickSearchResult = _forcePickSearchResult;
+@synthesize shouldTokenizeText = _shouldTokenizeText;
+@synthesize lineTopMarginAdjustment = _lineTopMarginAdjustment;
+@synthesize lineBottomMarginAdjustment = _lineBottomMarginAdjustment;
+@synthesize leftViewVerticalAdjustment = _leftViewVerticalAdjustment;
+@synthesize placeHolderVerticalAdjustment = _placeHolderVerticalAdjustment;
 
 #pragma mark Init
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -461,6 +478,12 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 	_editable = YES;
 	_removesTokensOnEndEditing = YES;
 	_tokenizingCharacters = [NSCharacterSet characterSetWithCharactersInString:@","];
+  
+  _shouldTokenizeText = YES;
+  _lineTopMarginAdjustment = 0;
+  _lineBottomMarginAdjustment = 0;
+  _leftViewVerticalAdjustment = 0;
+  _placeHolderVerticalAdjustment = 0;
 }
 
 #pragma mark Property Overrides
@@ -494,7 +517,7 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 - (NSArray *)tokenTitles {
 	
 	NSMutableArray * titles = [NSMutableArray array];
-	[_tokens enumerateObjectsUsingBlock:^(TIToken * token, NSUInteger idx, BOOL *stop){
+  [_tokens enumerateObjectsUsingBlock:^(UIControl<TIToken> * token, NSUInteger idx, BOOL *stop){
 		if (token.title) [titles addObject:token.title];
 	}];
 	return titles;
@@ -503,7 +526,7 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 - (NSArray *)tokenObjects {
 	
 	NSMutableArray * objects = [NSMutableArray array];
-	[_tokens enumerateObjectsUsingBlock:^(TIToken * token, NSUInteger idx, BOOL *stop){
+  [_tokens enumerateObjectsUsingBlock:^(UIControl<TIToken> * token, NSUInteger idx, BOOL *stop){
 		if (token.representedObject) [objects addObject:token.representedObject];
 		else if (token.title) [objects addObject:token.title];
 	}];
@@ -520,7 +543,7 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 }
 
 - (void)didBeginEditing {
-	[_tokens enumerateObjectsUsingBlock:^(TIToken * token, NSUInteger idx, BOOL *stop){[self addToken:token];}];
+  [_tokens enumerateObjectsUsingBlock:^(UIControl<TIToken> * token, NSUInteger idx, BOOL *stop){[self addToken:token];}];
 }
 
 - (void)didEndEditing {
@@ -528,12 +551,17 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 	[_selectedToken setSelected:NO];
 	_selectedToken = nil;
 	
-	[self tokenizeText];
+  // JM: Make tokenizing text optional.
+  if (_shouldTokenizeText) {
+    [self tokenizeText];
+  } else {
+    [self setText:kTextEmpty];
+  }
 	
 	if (_removesTokensOnEndEditing){
 		
-		[_tokens enumerateObjectsUsingBlock:^(TIToken * token, NSUInteger idx, BOOL *stop){[token removeFromSuperview];}];
-		
+		[_tokens enumerateObjectsUsingBlock:^(UIControl<TIToken> * token, NSUInteger idx, BOOL *stop){[token removeFromSuperview];}];
+    
 		NSString * untokenized = kTextEmpty;
 		if (_tokens.count){
 			
@@ -596,7 +624,7 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 	return nil;
 }
 
-- (void)addToken:(TIToken *)token {
+- (void)addToken:(UIControl<TIToken> *)token {
 	
 	BOOL shouldAdd = YES;
 	if ([delegate respondsToSelector:@selector(tokenField:willAddToken:)]){
@@ -605,7 +633,8 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 	
 	if (shouldAdd){
 		
-		[self becomeFirstResponder];
+    // JM: This isn't needed, if we add a token via another method, we may not want the keyboard to appear...
+		//[self becomeFirstResponder];
 		
 		[token addTarget:self action:@selector(tokenTouchDown:) forControlEvents:UIControlEventTouchDown];
 		[token addTarget:self action:@selector(tokenTouchUpInside:) forControlEvents:UIControlEventTouchUpInside];
@@ -626,7 +655,7 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 	}
 }
 
-- (void)removeToken:(TIToken *)token {
+- (void)removeToken:(UIControl<TIToken> *)token {
 	
 	if (token == _selectedToken) [self deselectSelectedToken];
 	
@@ -650,14 +679,14 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 
 - (void)removeAllTokens {
 	
-	[_tokens enumerateObjectsWithOptions:NSEnumerationReverse usingBlock:^(TIToken * token, NSUInteger idx, BOOL *stop) {
+  [_tokens enumerateObjectsWithOptions:NSEnumerationReverse usingBlock:^(UIControl<TIToken> * token, NSUInteger idx, BOOL *stop) {
 		[self removeToken:token];
 	}];
 	
     [self setText:@""];
 }
 
-- (void)selectToken:(TIToken *)token {
+- (void)selectToken:(UIControl <TIToken> *)token {
 	
 	[self deselectSelectedToken];
 	
@@ -665,7 +694,13 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 	[_selectedToken setSelected:YES];
 	
 	[self becomeFirstResponder];
-	[self setText:kTextHidden];
+  
+  // JM: Select token after field becomes first responder, because if this triggers didBeginEditing,
+  // then it will clear selected token.
+  _selectedToken = token;
+  [_selectedToken setSelected:YES];
+	
+  [self setText:kTextHidden];
 }
 
 - (void)deselectSelectedToken {
@@ -690,7 +725,7 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 	if (textChanged) [self sendActionsForControlEvents:UIControlEventEditingChanged];
 }
 
-- (void)tokenTouchDown:(TIToken *)token {
+- (void)tokenTouchDown:(UIControl <TIToken> *)token {
 	
 	if (_selectedToken != token){
 		[_selectedToken setSelected:NO];
@@ -698,24 +733,28 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 	}
 }
 
-- (void)tokenTouchUpInside:(TIToken *)token {
+- (void)tokenTouchUpInside:(UIControl <TIToken> *)token {
 	if (_editable) [self selectToken:token];
 }
 
 - (CGFloat)layoutTokensInternal {
 	
-	CGFloat topMargin = floor(self.font.lineHeight * 4 / 7);
+  CGFloat topMargin = floor(self.font.lineHeight * 4 / 7) + _lineTopMarginAdjustment;
 	CGFloat leftMargin = self.leftViewWidth + 12;
 	CGFloat hPadding = 8;
 	CGFloat rightMargin = self.rightViewWidth + hPadding;
-	CGFloat lineHeight = self.font.lineHeight + topMargin + 5;
+  CGFloat lineHeight = self.font.lineHeight + topMargin + 5 + _lineBottomMarginAdjustment;
 	
 	_numberOfLines = 1;
 	_tokenCaret = (CGPoint){leftMargin, (topMargin - 1)};
 	
-	[_tokens enumerateObjectsUsingBlock:^(TIToken * token, NSUInteger idx, BOOL *stop){
+  [_tokens enumerateObjectsUsingBlock:^(UIControl <TIToken> * token, NSUInteger idx, BOOL *stop){
 		
-		[token setFont:self.font];
+    // JM: Don't override font if it's already set (we may want the token to have bold font, but not the input text).
+    if (token.font == nil) {
+      [token setFont:self.font];
+    }
+
 		[token setMaxWidth:(self.bounds.size.width - rightMargin - (_numberOfLines > 1 ? hPadding : leftMargin))];
 		
 		if (token.superview){
@@ -747,7 +786,10 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 	if (self.bounds.size.height != newHeight){
 		
 		// Animating this seems to invoke the triple-tap-delete-key-loop-problem-thing™
-		[UIView animateWithDuration:(animated ? 0.3 : 0) animations:^{
+    [UIView animateWithDuration:(animated ? 0.3 : 0)
+                          delay:0
+                        options:(UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState)
+                     animations:^{
 			[self setFrame:((CGRect){self.frame.origin, {self.bounds.size.width, newHeight}})];
 			[self sendActionsForControlEvents:(UIControlEvents)TITokenFieldControlEventFrameWillChange];
 			
@@ -774,7 +816,7 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 		[scrollView setScrollsToTop:!flag];
 		[scrollView setScrollEnabled:!flag];
 		
-		CGFloat offset = ((_numberOfLines == 1 || !flag) ? 0 : _tokenCaret.y - floor(self.font.lineHeight * 4 / 7) + 1);
+    CGFloat offset = ((_numberOfLines == 1 || !flag) ? 0 : _tokenCaret.y - (floor(self.font.lineHeight * 4 / 7) + _lineTopMarginAdjustment) + 1);
 		[scrollView setContentOffset:CGPointMake(0, self.frame.origin.y + offset) animated:animated];
 	}
 	
@@ -796,7 +838,8 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 		}
 		
 		[label setText:text];
-		[label setFont:[UIFont systemFontOfSize:(self.font.pointSize + 1)]];
+    // JM: Copy the actual font being used by the textField in case it was customized.
+    [label setFont:[self.font fontWithSize:(self.font.pointSize + 1)]];
 		[label sizeToFit];
 	}
 	else
@@ -813,14 +856,16 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
         
         UILabel * label =  _placeHolderLabel;
 		if (!label || ![label isKindOfClass:[UILabel class]]){
-			label = [[UILabel alloc] initWithFrame:CGRectMake(_tokenCaret.x + 3, _tokenCaret.y + 2, self.rightView.bounds.size.width, self.rightView.bounds.size.height)];
+      CGFloat placeholderTop = _tokenCaret.y + 2 + _placeHolderVerticalAdjustment;
+      label = [[UILabel alloc] initWithFrame:CGRectMake(_tokenCaret.x + 3, placeholderTop, self.rightView.bounds.size.width, self.rightView.bounds.size.height)];
 			[label setTextColor:[UIColor colorWithWhite:0.75 alpha:1]];
 			 _placeHolderLabel = label;
             [self addSubview: _placeHolderLabel];
 		}
 		
 		[label setText:placeholder];
-		[label setFont:[UIFont systemFontOfSize:(self.font.pointSize + 1)]];
+    // JM: Copy the actual font being used by the textField in case it was customized.
+    [label setFont:[self.font fontWithSize:(self.font.pointSize + 1)]];
 		[label sizeToFit];
 	}
 	else
@@ -848,11 +893,13 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 }
 
 - (CGRect)placeholderRectForBounds:(CGRect)bounds {
-	return [self textRectForBounds:bounds];
+  CGRect placeholderRectForBounds = [self textRectForBounds:bounds];
+  placeholderRectForBounds.origin.y += _placeHolderVerticalAdjustment;
+  return placeholderRectForBounds;
 }
 
 - (CGRect)leftViewRectForBounds:(CGRect)bounds {
-	return ((CGRect){{8, ceilf(self.font.lineHeight * 4 / 7)}, self.leftView.bounds.size});
+  return ((CGRect){{8, (ceilf(self.font.lineHeight * 4 / 7) + _leftViewVerticalAdjustment)}, self.leftView.bounds.size});
 }
 
 - (CGRect)rightViewRectForBounds:(CGRect)bounds {
@@ -954,7 +1001,10 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
 	
-	[_tokenField tokenizeText];
+  // JM: Make this optional.
+  if (_tokenField.shouldTokenizeText) {
+    [_tokenField tokenizeText];
+  }
 	
 	if ([_delegate respondsToSelector:@selector(textFieldShouldReturn:)]){
 		return [_delegate textFieldShouldReturn:textField];

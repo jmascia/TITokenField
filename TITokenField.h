@@ -29,16 +29,17 @@
 #import <UIKit/UIKit.h>
 
 @class TITokenField, TIToken;
+@protocol TIToken;
 
 //==========================================================
 #pragma mark - Delegate Methods -
 //==========================================================
 @protocol TITokenFieldDelegate <UITextFieldDelegate>
 @optional
-- (BOOL)tokenField:(TITokenField *)tokenField willAddToken:(TIToken *)token;
-- (void)tokenField:(TITokenField *)tokenField didAddToken:(TIToken *)token;
-- (BOOL)tokenField:(TITokenField *)tokenField willRemoveToken:(TIToken *)token;
-- (void)tokenField:(TITokenField *)tokenField didRemoveToken:(TIToken *)token;
+- (BOOL)tokenField:(TITokenField *)tokenField willAddToken:(UIControl <TIToken> *)token;
+- (void)tokenField:(TITokenField *)tokenField didAddToken:(UIControl <TIToken> *)token;
+- (BOOL)tokenField:(TITokenField *)tokenField willRemoveToken:(UIControl <TIToken> *)token;
+- (void)tokenField:(TITokenField *)tokenField didRemoveToken:(UIControl <TIToken> *)token;
 
 - (void)tokenField:(TITokenField *)tokenField didFinishSearch:(NSArray *)matches;
 - (NSString *)tokenField:(TITokenField *)tokenField displayStringForRepresentedObject:(id)object;
@@ -46,6 +47,7 @@
 - (NSString *)tokenField:(TITokenField *)tokenField searchResultSubtitleForRepresentedObject:(id)object;
 - (UITableViewCell *)tokenField:(TITokenField *)tokenField resultsTableView:(UITableView *)tableView cellForRepresentedObject:(id)object;
 - (CGFloat)tokenField:(TITokenField *)tokenField resultsTableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath;
+- (UIControl <TIToken> *)tokenField:(TITokenField*)tokenField tokenForRepresentedObject:(id)object;
 @end
 
 @interface TITokenFieldInternalDelegate : NSObject <UITextFieldDelegate>
@@ -80,7 +82,7 @@ typedef enum {
 @interface TITokenField : UITextField
 @property (nonatomic, weak) id <TITokenFieldDelegate> delegate;
 @property (weak, nonatomic, readonly) NSArray * tokens;
-@property (weak, nonatomic, readonly) TIToken * selectedToken;
+@property (weak, nonatomic, readonly) UIControl <TIToken> * selectedToken;
 @property (weak, nonatomic, readonly) NSArray * tokenTitles;
 @property (weak, nonatomic, readonly) NSArray * tokenObjects;
 @property (nonatomic, assign) BOOL editable;
@@ -88,14 +90,19 @@ typedef enum {
 @property (nonatomic, assign) BOOL removesTokensOnEndEditing;
 @property (nonatomic, readonly) int numberOfLines;
 @property (nonatomic, strong) NSCharacterSet * tokenizingCharacters;
+@property (nonatomic, assign) BOOL shouldTokenizeText;
+@property (nonatomic, assign) CGFloat lineTopMarginAdjustment;
+@property (nonatomic, assign) CGFloat lineBottomMarginAdjustment;
+@property (nonatomic, assign) CGFloat leftViewVerticalAdjustment;
+@property (nonatomic, assign) CGFloat placeHolderVerticalAdjustment;
 
-- (void)addToken:(TIToken *)title;
+- (void)addToken:(UIControl <TIToken> *)title;
 - (TIToken *)addTokenWithTitle:(NSString *)title;
 - (TIToken *)addTokenWithTitle:(NSString *)title representedObject:(id)object;
-- (void)removeToken:(TIToken *)token;
+- (void)removeToken:(UIControl <TIToken> *)token;
 - (void)removeAllTokens;
 
-- (void)selectToken:(TIToken *)token;
+- (void)selectToken:(UIControl <TIToken> *)token;
 - (void)deselectSelectedToken;
 
 - (void)tokenizeText;
@@ -108,6 +115,21 @@ typedef enum {
 
 @end
 
+
+// JM: Added protocol so the tokens can be a custom object.
+
+//==========================================================
+#pragma mark - <TIToken> -
+//==========================================================
+
+@protocol TIToken <NSObject>
+@property (nonatomic, copy) NSString * title;
+@property (nonatomic, strong) id representedObject;
+@property (nonatomic, strong) UIFont * font;
+@property (nonatomic, assign) CGFloat maxWidth;
+@end
+
+
 //==========================================================
 #pragma mark - TIToken -
 //==========================================================
@@ -116,7 +138,7 @@ typedef enum {
 	TITokenAccessoryTypeDisclosureIndicator = 1,
 } TITokenAccessoryType;
 
-@interface TIToken : UIControl
+@interface TIToken : UIControl <TIToken>
 @property (nonatomic, copy) NSString * title;
 @property (nonatomic, strong) id representedObject;
 @property (nonatomic, strong) UIFont * font;
