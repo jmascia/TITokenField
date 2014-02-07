@@ -847,7 +847,8 @@ NSString * const kTextHidden = @"\u200D"; // Zero-Width Joiner
 		[self setLeftView:nil];
 	}
 	
-	[self layoutTokensAnimated:YES];
+	// JM: Don't animate this. It makes for some janky effects when viewController pushed onto navigation stack.
+	[self layoutTokensAnimated:NO];
 }
 
 - (void)setPlaceholder:(NSString *)placeholder {
