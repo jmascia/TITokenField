@@ -242,6 +242,10 @@
 
 - (void)tokenFieldDidEndEditing:(TITokenField *)field {
 	[self tokenFieldDidBeginEditing:field];
+  
+  // JM: Make sure the results table is hidden when the keyboard disappears (when tokenField
+  // resigns firstResponder manually tokenFieldTextDidChange and didChangeText are not called).
+  [self setSearchResultsVisible:NO];
 }
 
 - (void)tokenFieldTextDidChange:(TITokenField *)field {
